@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     const { participantKey, goalId, date, achieved } = await request.json();
     console.log('Request body:', { participantKey, goalId, date, achieved });
 
-    // 1. Verify participant
+    // Get participant info
     const { data: participant, error: participantError } = await supabaseAdmin
       .from('participants')
       .select('id, challenge_id')
@@ -30,17 +30,33 @@ export async function POST(request: Request) {
       .single();
 
     if (participantError || !participant) {
-      throw new Error('Participant not found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get goal info to verify ownership
+    const { data: goal, error: goalError } = await supabaseAdmin
+      .from('daily_goals')
+      .select('participant_id, points')
+      .eq('id', goalId)
+      .single();
+
+    if (goalError || !goal) {
+      return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
+    }
+
+    // Check if the goal belongs to the participant
+    if (goal.participant_id !== participant.id) {
+      return NextResponse.json({ error: 'You can only update your own goals' }, { status: 403 });
     }
 
     // 2. Get the goal to know the points value
-    const { data: goal, error: goalError } = await supabaseAdmin
+    const { data: goalInfo, error: goalInfoError } = await supabaseAdmin
       .from('daily_goals')
       .select('id, points')
       .eq('id', goalId)
       .single();
 
-    if (goalError || !goal) {
+    if (goalInfoError || !goalInfo) {
       throw new Error('Goal not found');
     }
 
@@ -59,7 +75,7 @@ export async function POST(request: Request) {
       goal_id: goalId,
       date,
       achieved,
-      points_earned: achieved ? goal.points : 0
+      points_earned: achieved ? goalInfo.points : 0
     };
 
     if (existingLog?.id) {

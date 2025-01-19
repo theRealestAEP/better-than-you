@@ -479,7 +479,7 @@ export default function ChallengePage({ params }: Props) {
                         )}
                       </td>
                       <td className="px-6 py-4 text-center">
-                        {isOwnGoal && (
+                        {isOwnGoal ? (
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
                               type="checkbox"
@@ -512,9 +512,14 @@ export default function ChallengePage({ params }: Props) {
                             />
                             <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                           </label>
-                        )}
-                        {!isOwnGoal && log?.achieved && (
-                          <span className="text-green-500">✓</span>
+                        ) : (
+                          <div>
+                            {log?.achieved ? (
+                              <span className="text-green-500">✓</span>
+                            ) : (
+                              <span className="text-gray-500">-</span>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>

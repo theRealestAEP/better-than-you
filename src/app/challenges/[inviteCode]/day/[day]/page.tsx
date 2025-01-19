@@ -14,18 +14,18 @@ interface Props {
 
 interface Goal {
   id: string;
+  participant_id: string;
   description: string;
   points: number;
-  participant_id: string;
-  date: string;
 }
 
 interface Log {
   id: string;
   goal_id: string;
+  participant_id: string;
+  date: string;
   achieved: boolean;
   points_earned: number;
-  date: string;
 }
 
 interface Participant {
@@ -36,12 +36,13 @@ interface Participant {
 
 export default function DayDetailPage({ params }: Props) {
   const { inviteCode, day } = use(params);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [logs, setLogs] = useState<Log[]>([]);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [currentParticipant, setCurrentParticipant] = useState<Participant | null>(null);
   const router = useRouter();
-  const currentParticipant = localStorage.getItem('currentParticipantKey');
 
   const fetchDayData = useCallback(async () => {
     try {
@@ -56,6 +57,7 @@ export default function DayDetailPage({ params }: Props) {
       const dayLogs = data.logs.filter((log: Log) => log.date === day);
       setLogs(dayLogs);
       setParticipants(data.participants);
+      setCurrentParticipant(data.participants.find((p: Participant) => p.participant_key === localStorage.getItem('currentParticipantKey')));
     } catch (error) {
       console.error('Error fetching day data:', error);
       alert('Failed to load day data');
@@ -65,12 +67,13 @@ export default function DayDetailPage({ params }: Props) {
   }, [inviteCode, day]);
 
   useEffect(() => {
-    if (!currentParticipant) {
+    const participantKey = localStorage.getItem('currentParticipantKey');
+    if (!participantKey) {
       router.push(`/challenges/${inviteCode}/join`);
       return;
     }
     fetchDayData();
-  }, [currentParticipant, inviteCode, router, fetchDayData]);
+  }, [inviteCode, day, router]);
 
   async function handleToggleAchievement(goalId: string, achieved: boolean) {
     const participantKey = localStorage.getItem('currentParticipantKey');
@@ -182,13 +185,15 @@ export default function DayDetailPage({ params }: Props) {
                 <p className="text-gray-400">No goals set for this challenge.</p>
               ) : (
                 <div className="space-y-4">
-                  {goals.map(goal => {
-                    const log = logs.find(l => 
-                      l.goal_id === goal.id && 
-                      l.date === day
+                  {goals.map((goal) => {
+                    const log = logs.find(
+                      l => l.goal_id === goal.id && 
+                           l.participant_id === goal.participant_id &&
+                           l.date === day
                     );
-                    const participant = participants.find(p => p.id === goal.participant_id);
-                    
+                    const goalOwner = participants.find(p => p.id === goal.participant_id);
+                    const isOwnGoal = goal.participant_id === currentParticipant?.id;
+
                     return (
                       <div 
                         key={goal.id}
@@ -197,18 +202,53 @@ export default function DayDetailPage({ params }: Props) {
                         <div className="space-y-1">
                           <div className="font-medium">{goal.description}</div>
                           <div className="text-sm text-gray-400">
-                            By {participant?.name} • {goal.points} points
+                            By {goalOwner?.name || 'Unknown'} • {goal.points} points
                           </div>
                         </div>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={log?.achieved || false}
-                            onChange={(e) => handleToggleAchievement(goal.id, e.target.checked)}
-                            className="sr-only peer"
-                          />
-                          <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
+                        <div className="flex items-center">
+                          {isOwnGoal ? (
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={log?.achieved || false}
+                                onChange={async (e) => {
+                                  const participantKey = localStorage.getItem('currentParticipantKey');
+                                  try {
+                                    const response = await fetch('/api/daily-logs', {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        participantKey,
+                                        goalId: goal.id,
+                                        date: day,
+                                        achieved: e.target.checked
+                                      }),
+                                    });
+
+                                    if (!response.ok) {
+                                      throw new Error('Failed to update achievement');
+                                    }
+
+                                    fetchDayData(); // Refresh data to show updated points
+                                  } catch (error) {
+                                    console.error('Error updating achievement:', error);
+                                    alert('Failed to update achievement');
+                                  }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </label>
+                          ) : (
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              {log?.achieved ? (
+                                <span className="text-green-500">✓</span>
+                              ) : (
+                                <span className="text-gray-500">-</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     );
                   })}

@@ -29,8 +29,11 @@ interface DailyLog {
 interface DailyGoal {
   id: string;
   challenge_id: string;
-  title: string;
+  participant_id: string;
+  description: string;
   points: number;
+  date: string | null;
+  created_at: string;
 }
 
 interface TimeSeriesDataPoint {
@@ -52,8 +55,10 @@ export default function ChallengePage({ params }: Props) {
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [newGoal, setNewGoal] = useState({ description: '', points: 0 });
+  const [newGoal, setNewGoal] = useState({ description: '' });
   const [currentParticipant, setCurrentParticipant] = useState<Participant | null>(null);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [editingPoints, setEditingPoints] = useState<{[key: string]: number}>({});
 
   useEffect(() => {
     // Check for magic link parameter
@@ -116,7 +121,7 @@ export default function ChallengePage({ params }: Props) {
         body: JSON.stringify({
           participantKey,
           description: newGoal.description,
-          points: newGoal.points
+          points: 1  // Default to 1 point
         }),
       });
 
@@ -124,11 +129,44 @@ export default function ChallengePage({ params }: Props) {
         throw new Error('Failed to add goal');
       }
 
-      setNewGoal({ description: '', points: 0 });
+      setNewGoal({ description: '' });
       fetchData();
     } catch (error) {
       console.error('Error adding goal:', error);
       alert('Failed to add goal');
+    }
+  }
+
+  async function handleUpdatePoints(goalId: string) {
+    const newPoints = editingPoints[goalId];
+    if (!newPoints) return;
+
+    const participantKey = localStorage.getItem('currentParticipantKey');
+    try {
+      const response = await fetch('/api/daily-goals/points', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantKey,
+          goalId,
+          points: newPoints
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update points');
+      }
+
+      // Clear the editing state for this goal
+      setEditingPoints(prev => {
+        const next = { ...prev };
+        delete next[goalId];
+        return next;
+      });
+      fetchData();
+    } catch (error) {
+      console.error('Error updating points:', error);
+      alert('Failed to update points');
     }
   }
 
@@ -159,18 +197,30 @@ export default function ChallengePage({ params }: Props) {
     };
   });
 
-  // Generate calendar days for the current month
-  const today = new Date();
-  const currentMonth = today.getMonth();
-  const currentYear = today.getFullYear();
+  // Update calendar generation to use selectedDate instead of today
+  const currentMonth = selectedDate.getMonth();
+  const currentYear = selectedDate.getFullYear();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
   const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+
+  // Function to navigate months
+  function navigateMonth(direction: 'prev' | 'next') {
+    setSelectedDate(prevDate => {
+      const newDate = new Date(prevDate);
+      if (direction === 'prev') {
+        newDate.setMonth(newDate.getMonth() - 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() + 1);
+      }
+      return newDate;
+    });
+  }
 
   const calendarDays = Array.from({ length: daysInMonth }, (_, i) => {
     const date = new Date(currentYear, currentMonth, i + 1);
     const dateString = date.toISOString().split('T')[0];
     const hasGoals = dailyGoals.length > 0;
-    const isToday = dateString === today.toISOString().split('T')[0];
+    const isToday = dateString === selectedDate.toISOString().split('T')[0];
     
     return {
       date,
@@ -273,7 +323,30 @@ export default function ChallengePage({ params }: Props) {
 
         {/* Calendar View */}
         <div className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">Calendar</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">Calendar</h2>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => navigateMonth('prev')}
+                className="p-2 text-gray-300 hover:text-white transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <span className="text-lg">
+                {selectedDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+              </span>
+              <button
+                onClick={() => navigateMonth('next')}
+                className="p-2 text-gray-300 hover:text-white transition-colors"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          </div>
           <div className="bg-gray-800 p-4 rounded-lg">
             <div className="grid grid-cols-7 gap-2">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -318,19 +391,7 @@ export default function ChallengePage({ params }: Props) {
                   required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-300">
-                  Points
-                </label>
-                <input
-                  type="number"
-                  value={newGoal.points}
-                  onChange={(e) => setNewGoal(prev => ({ ...prev, points: parseInt(e.target.value) }))}
-                  className="mt-1 block w-full rounded-md bg-gray-700 border-gray-600 text-white px-3 py-2"
-                  required
-                  min="0"
-                />
-              </div>
+              <p className="text-sm text-gray-400">New goals start with 1 point. Other participants can adjust the points.</p>
               <button
                 type="submit"
                 className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700 transition-colors"
@@ -345,30 +406,80 @@ export default function ChallengePage({ params }: Props) {
         <div className="mb-8">
           <h2 className="text-xl font-semibold mb-4">Daily Goals</h2>
           <div className="bg-gray-800 rounded-lg overflow-hidden">
+            <div className="p-4 bg-gray-700 border-b border-gray-600">
+              <p className="text-gray-300">
+                Showing goals for: <span className="font-medium text-white">{new Date().toLocaleDateString()}</span>
+                <br />
+                <span className="text-sm text-gray-400">
+                  (Toggle switches reflect today's achievements only. Visit specific dates in the calendar to view or update past achievements.)
+                </span>
+              </p>
+            </div>
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-700">
+                  <th className="px-6 py-3 text-left">Participant</th>
                   <th className="px-6 py-3 text-left">Goal</th>
                   <th className="px-6 py-3 text-right">Points</th>
-                  <th className="px-6 py-3 text-center">Status</th>
+                  <th className="px-6 py-3 text-center">Today's Status</th>
                 </tr>
               </thead>
               <tbody>
-                {dailyGoals
-                  .filter(goal => goal.challenge_id === currentParticipant?.challenge_id)
-                  .map((goal) => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const log = dailyLogs.find(
-                      l => l.goal_id === goal.id && 
-                           l.participant_id === currentParticipant?.id &&
-                           l.date === today
-                    );
+                {dailyGoals.map((goal) => {
+                  const today = new Date().toISOString().split('T')[0];
+                  const log = dailyLogs.find(
+                    l => l.goal_id === goal.id && 
+                         l.participant_id === goal.participant_id &&
+                         l.date === today
+                  );
+                  const goalOwner = participants.find(p => p.id === goal.participant_id);
+                  const isOwnGoal = goal.participant_id === currentParticipant?.id;
 
-                    return (
-                      <tr key={goal.id} className="border-t border-gray-700">
-                        <td className="px-6 py-4">{goal.title}</td>
-                        <td className="px-6 py-4 text-right">{goal.points}</td>
-                        <td className="px-6 py-4 text-center">
+                  return (
+                    <tr key={goal.id} className="border-t border-gray-700">
+                      <td className="px-6 py-4">
+                        <span className={isOwnGoal ? 'text-indigo-400' : ''}>
+                          {goalOwner?.name || 'Unknown'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">{goal.description}</td>
+                      <td className="px-6 py-4 text-right">
+                        {isOwnGoal ? (
+                          // If it's your own goal, just show the points
+                          goal.points
+                        ) : (
+                          // If it's someone else's goal, show input and save button
+                          <div className="flex items-center justify-end gap-2">
+                            <input
+                              type="number"
+                              value={editingPoints[goal.id] === undefined ? goal.points : editingPoints[goal.id] || ''}
+                              onChange={(e) => {
+                                const value = e.target.value === '' ? 0 : parseInt(e.target.value);
+                                if (!isNaN(value)) {
+                                  setEditingPoints(prev => ({
+                                    ...prev,
+                                    [goal.id]: value
+                                  }));
+                                }
+                              }}
+                              className="w-20 px-2 py-1 text-right rounded bg-gray-700 border border-gray-600"
+                              min="1"
+                            />
+                            {editingPoints[goal.id] !== undefined && 
+                             editingPoints[goal.id] !== goal.points && 
+                             editingPoints[goal.id] > 0 && (
+                              <button
+                                onClick={() => handleUpdatePoints(goal.id)}
+                                className="px-2 py-1 text-sm bg-indigo-600 rounded hover:bg-indigo-700 transition-colors"
+                              >
+                                Save
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {isOwnGoal && (
                           <label className="relative inline-flex items-center cursor-pointer">
                             <input
                               type="checkbox"
@@ -401,10 +512,14 @@ export default function ChallengePage({ params }: Props) {
                             />
                             <div className="w-11 h-6 bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                           </label>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        )}
+                        {!isOwnGoal && log?.achieved && (
+                          <span className="text-green-500">✓</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

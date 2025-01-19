@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import dynamic from 'next/dynamic';
@@ -60,6 +60,30 @@ export default function ChallengePage({ params }: Props) {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editingPoints, setEditingPoints] = useState<{[key: string]: number}>({});
 
+  const fetchData = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/challenge/${inviteCode}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch challenge data');
+      }
+      const data = await response.json();
+      setParticipants(data.participants);
+      setDailyGoals(data.goals);
+      setDailyLogs(data.logs);
+
+      // Find current participant
+      const participantKey = localStorage.getItem('currentParticipantKey');
+      const current = data.participants.find(
+        (p: Participant) => p.participant_key === participantKey
+      );
+      setCurrentParticipant(current || null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }, [inviteCode]);
+
   useEffect(() => {
     // Check for magic link parameter
     const urlParams = new URLSearchParams(window.location.search);
@@ -84,31 +108,7 @@ export default function ChallengePage({ params }: Props) {
 
     localStorage.setItem('currentParticipantKey', participantKey);
     fetchData();
-  }, [inviteCode]);
-
-  async function fetchData() {
-    try {
-      const response = await fetch(`/api/challenge/${inviteCode}`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch challenge data');
-      }
-      const data = await response.json();
-      setParticipants(data.participants);
-      setDailyGoals(data.goals);
-      setDailyLogs(data.logs);
-
-      // Find current participant
-      const participantKey = localStorage.getItem('currentParticipantKey');
-      const current = data.participants.find(
-        (p: Participant) => p.participant_key === participantKey
-      );
-      setCurrentParticipant(current || null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  }
+  }, [inviteCode, router, fetchData]);
 
   async function handleAddGoal(e: React.FormEvent) {
     e.preventDefault();
@@ -268,7 +268,7 @@ export default function ChallengePage({ params }: Props) {
             </Link>
             <button
               onClick={() => {
-                const code = prompt('Enter invite code to join a challenge:');
+                const code = prompt("Enter invite code to join a challenge:");
                 if (code) {
                   router.push(`/challenges/${code}/join`);
                 }
@@ -411,7 +411,7 @@ export default function ChallengePage({ params }: Props) {
                 Showing goals for: <span className="font-medium text-white">{new Date().toLocaleDateString()}</span>
                 <br />
                 <span className="text-sm text-gray-400">
-                  (Toggle switches reflect today's achievements only. Visit specific dates in the calendar to view or update past achievements.)
+                  (Toggle switches reflect todays achievements only. Visit specific dates in the calendar to view or update past achievements.)
                 </span>
               </p>
             </div>
@@ -421,7 +421,7 @@ export default function ChallengePage({ params }: Props) {
                   <th className="px-6 py-3 text-left">Participant</th>
                   <th className="px-6 py-3 text-left">Goal</th>
                   <th className="px-6 py-3 text-right">Points</th>
-                  <th className="px-6 py-3 text-center">Today's Status</th>
+                  <th className="px-6 py-3 text-center">Todays Status</th>
                 </tr>
               </thead>
               <tbody>

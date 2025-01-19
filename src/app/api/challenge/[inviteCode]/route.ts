@@ -1,15 +1,16 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../../lib/supabaseAdmin';
 
-
-interface Params {
-  params: {
-    inviteCode: string;
-  };
+interface ApiError extends Error {
+  message: string;
+  status?: number;
 }
 
-export async function GET(request: Request, { params }: Params) {
-  const { inviteCode } = params;
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ inviteCode: string }> }
+) {
+  const { inviteCode } = await context.params;
   console.log('GET /api/challenge/[inviteCode]', { inviteCode });
 
   try {
@@ -71,7 +72,8 @@ export async function GET(request: Request, { params }: Params) {
       logs: logs || []
     });
   } catch (err) {
-    console.error('Unexpected error:', err);
-    return NextResponse.json({ error: 'Something went wrong' }, { status: 500 });
+    const error = err as ApiError;
+    console.error(error);
+    return NextResponse.json({ error: error.message || 'Something went wrong.' }, { status: error.status || 500 });
   }
 }

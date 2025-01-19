@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { use } from 'react';
@@ -41,21 +41,9 @@ export default function DayDetailPage({ params }: Props) {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const currentParticipant = localStorage.getItem('currentParticipantKey');
 
-  useEffect(() => {
-    const participantKeys = JSON.parse(localStorage.getItem('participantKeys') || '{}');
-    const participantKey = participantKeys[inviteCode];
-    
-    if (!participantKey) {
-      router.push(`/challenges/${inviteCode}/join`);
-      return;
-    }
-
-    localStorage.setItem('currentParticipantKey', participantKey);
-    fetchDayData();
-  }, [inviteCode, day]);
-
-  async function fetchDayData() {
+  const fetchDayData = useCallback(async () => {
     try {
       const response = await fetch(`/api/challenge/${inviteCode}`);
       const data = await response.json();
@@ -64,9 +52,7 @@ export default function DayDetailPage({ params }: Props) {
         throw new Error(data.error || 'Failed to fetch challenge data');
       }
 
-      // Get all goals for the challenge
       setGoals(data.goals);
-      // Filter logs for this specific day
       const dayLogs = data.logs.filter((log: Log) => log.date === day);
       setLogs(dayLogs);
       setParticipants(data.participants);
@@ -76,7 +62,15 @@ export default function DayDetailPage({ params }: Props) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [inviteCode, day]);
+
+  useEffect(() => {
+    if (!currentParticipant) {
+      router.push(`/challenges/${inviteCode}/join`);
+      return;
+    }
+    fetchDayData();
+  }, [currentParticipant, inviteCode, router, fetchDayData]);
 
   async function handleToggleAchievement(goalId: string, achieved: boolean) {
     const participantKey = localStorage.getItem('currentParticipantKey');
@@ -84,12 +78,6 @@ export default function DayDetailPage({ params }: Props) {
     try {
       const goal = goals.find(g => g.id === goalId);
       if (!goal) return;
-
-      // Find existing log for this day
-      const existingLog = logs.find(l => 
-        l.goal_id === goalId && 
-        l.date === day
-      );
 
       const response = await fetch('/api/daily-logs', {
         method: 'POST',
@@ -106,7 +94,7 @@ export default function DayDetailPage({ params }: Props) {
         throw new Error('Failed to update achievement');
       }
 
-      fetchDayData(); // Refresh data to show updated points
+      fetchDayData();
     } catch (error) {
       console.error('Error updating achievement:', error);
       alert('Failed to update achievement');

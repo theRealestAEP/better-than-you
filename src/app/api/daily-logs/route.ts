@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '../../lib/supabaseAdmin';
 
+interface ApiError extends Error {
+  message: string;
+  status?: number;
+}
+
 interface LogData {
   id?: string;
   challenge_id: string;
@@ -20,45 +25,37 @@ export async function POST(request: Request) {
     // 1. Verify participant
     const { data: participant, error: participantError } = await supabaseAdmin
       .from('participants')
-      .select('*')
+      .select('id, challenge_id')
       .eq('participant_key', participantKey)
       .single();
 
     if (participantError || !participant) {
-      console.error('Participant not found:', participantError);
-      return NextResponse.json({ error: 'Participant not found.' }, { status: 400 });
+      throw new Error('Participant not found');
     }
 
     // 2. Get the goal to know the points value
     const { data: goal, error: goalError } = await supabaseAdmin
       .from('daily_goals')
-      .select('points')
+      .select('id, points')
       .eq('id', goalId)
       .single();
 
     if (goalError || !goal) {
-      console.error('Goal not found:', goalError);
-      return NextResponse.json({ error: 'Goal not found.' }, { status: 400 });
+      throw new Error('Goal not found');
     }
-
-    const challengeId = participant.challenge_id;
-    const participantId = participant.id;
 
     // 3. Check if a log already exists for this goal and date
     const { data: existingLog } = await supabaseAdmin
       .from('daily_logs')
-      .select('*')
+      .select('id')
       .eq('goal_id', goalId)
       .eq('date', date)
-      .eq('participant_id', participantId)
       .single();
-
-    console.log('Existing log:', existingLog);
 
     // 4. Insert or update daily log
     const logData: LogData = {
-      challenge_id: challengeId,
-      participant_id: participantId,
+      challenge_id: participant.challenge_id,
+      participant_id: participant.id,
       goal_id: goalId,
       date,
       achieved,
@@ -69,23 +66,23 @@ export async function POST(request: Request) {
       logData.id = existingLog.id;
     }
 
-    console.log('Upserting log with data:', logData);
-
-    const { data: dailyLog, error: logError } = await supabaseAdmin
+    const { data: dailyLog, error: upsertError } = await supabaseAdmin
       .from('daily_logs')
       .upsert(logData)
       .select()
       .single();
 
-    if (logError) {
-      console.error('Error upserting log:', logError);
-      return NextResponse.json({ error: logError.message }, { status: 400 });
+    if (upsertError || !dailyLog) {
+      throw new Error('Failed to update log');
     }
 
-    console.log('Successfully updated log:', dailyLog);
-    return NextResponse.json({ dailyLog }, { status: 201 });
-  } catch (err: any) {
-    console.error('Unexpected error:', err);
-    return NextResponse.json({ error: 'Something went wrong.' }, { status: 500 });
+    return NextResponse.json(dailyLog);
+  } catch (err) {
+    const error = err as ApiError;
+    console.error(error);
+    return NextResponse.json(
+      { error: error.message || 'Something went wrong' },
+      { status: error.status || 500 }
+    );
   }
 }

@@ -5,7 +5,7 @@ declare module 'recharts' {
     children?: ReactNode;
     width?: string | number;
     height?: string | number;
-    data?: any[];
+    data?: Record<string, string | number>[];
     margin?: { top: number; right: number; left: number; bottom: number };
   }
 

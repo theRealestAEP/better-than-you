@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface Challenge {
   id: string;
@@ -12,6 +13,7 @@ interface Challenge {
 export default function Home() {
   const [joinedChallenges, setJoinedChallenges] = useState<Challenge[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
     const fetchJoinedChallenges = async () => {
@@ -19,7 +21,7 @@ export default function Home() {
       if (Object.keys(participantKeys).length > 0) {
         try {
           const allChallenges = [];
-          for (const [inviteCode, participantKey] of Object.entries(participantKeys)) {
+          for (const [, participantKey] of Object.entries(participantKeys)) {
             const response = await fetch('/api/my-challenges', {
               headers: {
                 'participant-key': participantKey as string
@@ -45,6 +47,13 @@ export default function Home() {
     fetchJoinedChallenges();
   }, []);
 
+  const handleJoinChallenge = () => {
+    const code = prompt('Enter invite code to join a challenge:');
+    if (code) {
+      router.push(`/challenges/${code}/join`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <div className="max-w-6xl mx-auto p-4">
@@ -66,12 +75,7 @@ export default function Home() {
             </Link>
             
             <button
-              onClick={() => {
-                const code = prompt('Enter your invite code:');
-                if (code) {
-                  window.location.href = `/challenges/${code}/join`;
-                }
-              }}
+              onClick={handleJoinChallenge}
               className="px-8 py-3 bg-gray-800 text-white border-2 border-gray-700 rounded-lg hover:bg-gray-700 transition-colors text-lg font-semibold"
             >
               Join with Code
@@ -101,7 +105,7 @@ export default function Home() {
             </div>
           ) : (
             <div className="text-center text-gray-400 mt-8">
-              You haven't joined any challenges yet.
+              You havent joined any challenges yet.
             </div>
           )}
         </div>
